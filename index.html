@@ -231,18 +231,19 @@ button, input, select { font: inherit; color: inherit; }
 .refnav { display: flex; flex-wrap: wrap; gap: 8px; align-items: center; margin: 12px 0 8px; }
 .refnav input { width: 84px; background: var(--bg); border: 1px solid var(--line2); border-radius: 7px; padding: 6px 8px; font-family: var(--mono); }
 .refpl { font-size: 13px; color: var(--ink2); flex: 1; min-width: 100px; }
-.refgrid { display: grid; grid-template-columns: minmax(0, 1fr) 190px; gap: 12px; align-items: start; }
+.refgrid { display: grid; grid-template-columns: minmax(0, 1fr) minmax(0, 1fr); gap: 12px; align-items: start; }
 .reftext { margin: 0; background: var(--bg); border: 1px solid var(--line); border-radius: 8px; padding: 12px 14px; font: 12.5px/1.55 var(--mono); white-space: pre-wrap; overflow-wrap: anywhere; max-height: 68vh; overflow: auto; color: var(--ink); }
 .refimg { display: flex; flex-direction: column; gap: 6px; }
 .refimg-h { font-size: 12px; color: var(--ink3); }
 .refimg .thumb { width: 100%; }
+.refimg .thumb img { height: auto; object-fit: contain; }
 .hits { display: flex; flex-direction: column; gap: 4px; margin-top: 8px; max-height: 260px; overflow: auto; }
 .hit { text-align: left; background: var(--bg); border: 1px solid var(--line); border-radius: 7px; padding: 6px 10px; font-size: 13px; color: var(--ink2); cursor: pointer; }
 .hit:hover { border-color: var(--blue); }
 .hit b { color: var(--blue-d); font-family: var(--mono); font-size: 12px; }
 .bib { margin: 8px 0 0; padding-left: 22px; font-size: 13.5px; color: var(--ink2); display: grid; gap: 6px; overflow-wrap: anywhere; }
 #refq { width: 100%; margin-top: 4px; background: var(--bg); border: 1px solid var(--line2); border-radius: 7px; padding: 8px 10px; }
-@media (max-width: 700px) { .refgrid { grid-template-columns: minmax(0, 1fr); } .refimg .thumb { width: 190px; } }
+@media (max-width: 700px) { .refgrid { grid-template-columns: minmax(0, 1fr); } .refimg .thumb { width: 100%; max-width: 560px; } }
 
 .inp textarea { width: 100%; min-width: 0; min-height: 96px; resize: vertical; background: var(--bg); border: 1px solid var(--line2); border-radius: 7px; padding: 7px 10px; font-family: var(--mono); font-size: 13.5px; }
 .inp textarea:focus { border-color: var(--blue); background: var(--surface); }
@@ -1346,6 +1347,7 @@ if(typeof module!=="undefined")module.exports=TABLES;
     return [...new Set(out)];
   }
   function pageLabel(p) {
+    if (p.label) return p.label;
     const ns = p.figs.map(f => f.n);
     return 'Pág. ' + p.page + (ns.length ? ' · Fig. ' + (ns.length > 1 ? ns[0] + '–' + ns[ns.length - 1] : ns[0]) : '');
   }
@@ -1677,7 +1679,7 @@ if(typeof module!=="undefined")module.exports=TABLES;
   let REFIDX = null;
   const sentence = (t) => { let r = t === t.toUpperCase() ? t.charAt(0) + t.slice(1).toLowerCase() : t; return r.replace(/ceb-70/gi, 'CEB-70').replace(/blévot/gi, 'Blévot'); };
   function viewRefBib() {
-    state.refPage = state.refPage || 1;
+    state.refPage = Number.isFinite(state.refPage) ? state.refPage : 1;
     const maxP = Math.max(...Object.keys(REF.pages).map(Number));
     const wrap = h('div', { class: 'page' }, h('header', { class: 'ph' }, h('span', { class: 'pnum' }, 'Referência'), h('div', {}, h('h1', {}, 'Referência bibliográfica'), h('p', { class: 'psub' }, 'Texto-base de todas as fórmulas, parâmetros, exemplos e figuras deste app.'))));
     // citação
@@ -1704,17 +1706,25 @@ if(typeof module!=="undefined")module.exports=TABLES;
     // leitor
     const txt = h('pre', { class: 'reftext', tabindex: '0' });
     const img = h('div', { class: 'refimg' });
+    // páginas completas (arquivo f = página do texto + 4; capa e sumário ocupam f = 1 a 4). LASTF = última página com imagem em figs/
+    const LASTF = 58;
+    const ALLPG = [];
+    for (let f = 1; f <= LASTF; f++) {
+      const base = byFile.find(x => x.f === f) || { f, file: 'figs/p' + String(f).padStart(3, '0') + '.jpg', page: Math.max(0, f - 4), figs: [] };
+      ALLPG.push(f < 5 ? Object.assign({}, base, { page: 0, label: 'Capa e sumário · ' + f + '/4' }) : base);
+    }
     const num = h('input', { type: 'number', id: 'refpg', min: 0, max: maxP, value: state.refPage, 'aria-label': 'Número da página' });
     const lab = h('span', { class: 'refpl' });
     function drawReader() {
-      let p = Math.max(0, Math.min(maxP, Math.round(state.refPage || 1))); state.refPage = p; num.value = p;
+      let p = Math.max(0, Math.min(maxP, Math.round(Number.isFinite(state.refPage) ? state.refPage : 1))); state.refPage = p; num.value = p;
       lab.textContent = p === 0 ? 'Capa e sumário' : 'Página ' + p + ' de ' + maxP;
       txt.textContent = REF.pages[String(p)] || '(página sem texto)'; txt.scrollTop = 0;
       img.replaceChildren();
-      const fp = byFile.filter(x => x.page === p && x.figs.length)[0] || byFile.find(x => x.page === p);
-      if (fp) { img.append(h('div', { class: 'refimg-h' }, 'Desenhos desta página'), thumb(fp, [fp], 0)); }
+      const cur = ALLPG.filter(x => x.page === p);
+      if (cur.length) img.append(h('div', { class: 'refimg-h' }, 'Página completa (clique para ampliar)'), ...cur.map(x => thumb(x, ALLPG, ALLPG.indexOf(x))));
+      else img.append(h('div', { class: 'refimg-h' }, 'Imagem desta página ainda não disponível.'));
     }
-    const step = (d) => { state.refPage = (state.refPage || 1) + d; drawReader(); };
+    const step = (d) => { state.refPage = (Number.isFinite(state.refPage) ? state.refPage : 1) + d; drawReader(); };
     num.addEventListener('change', () => { state.refPage = parseInt(num.value, 10) || 0; drawReader(); });
     const sq = h('input', { type: 'search', id: 'refq', placeholder: 'Buscar no texto da referência (ex.: bielas, suspensão, CEB-70)' });
     const hits = h('div', { class: 'hits' });
@@ -1731,7 +1741,7 @@ if(typeof module!=="undefined")module.exports=TABLES;
       if (!n) hits.append(h('p', { class: 'fine' }, 'Nada encontrado.'));
     });
     wrap.append(h('div', { class: 'card', id: 'reader' }, h('h2', {}, 'Ler a referência'),
-      h('p', { class: 'fine' }, 'Texto extraído da referência, página a página. Equações e desenhos podem aparecer desordenados ou ausentes aqui: use as abas Fórmulas e Figuras da referência para vê-los formatados.'),
+      h('p', { class: 'fine' }, 'Texto extraído da referência, página a página. Equações e desenhos podem aparecer desordenados ou ausentes aqui: use as abas Fórmulas e Figuras da referência para vê-los formatados. Ao lado aparece a página original completa.'),
       sq, hits,
       h('div', { class: 'refnav' }, h('button', { type: 'button', class: 'btn btn-ghost', onclick: () => step(-1), 'aria-label': 'Página anterior' }, '‹ Anterior'), num, lab, h('button', { type: 'button', class: 'btn btn-ghost', onclick: () => step(1), 'aria-label': 'Próxima página' }, 'Próxima ›')),
       h('div', { class: 'refgrid' }, txt, img)));
